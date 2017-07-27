@@ -28,7 +28,7 @@ pip install cgcloud-spark==1.6.0
 ```
 which will install the correct version of both cgcloud-core and cgcloud-spark.
 
-Note, the steps to register your ssh key and create the template boxes below only need to be done once.
+Note, the steps to register your ssh key and create the template boxes only need to be done once.
 ```
 cgcloud register-key ~/.ssh/id_rsa.pub
 cgcloud create generic-ubuntu-trusty-box
@@ -117,10 +117,10 @@ cgcloud create-cluster -h
 
 In particular, note the `--spot-bid` and related spot options to utilize AWS 
 spot instances in order to save on costs. To avoid unintended costs, 
-it's a good idea to use the AWS console to double check that your 
+it is a good idea to use the AWS console to double check that your 
 instances have terminated.
 
-#### Access Spark GUI
+#### Accessing the Spark GUI
 
 In order to view the Spark server or application GUI pages on port 4040 and 
 8080 on `spark-master`, go to Security Groups in the AWS console
@@ -178,7 +178,7 @@ In the `adam-shell` command, all of the arguments are passed to the
 
 All of these commands assume that the Spark assembly you are using is
 properly configured for your YARN deployment. Typically, if your Spark
-assembly is properly configured to use YARN, there will be symbolic link at
+assembly is properly configured to use YARN, there will be a symbolic link at
 `${SPARK_HOME}/conf/yarn-conf/` that points to the core Hadoop/YARN
 configuration. Though, this may vary by the distribution you are running.
 
@@ -254,9 +254,9 @@ include:
 
 * [adam-kmers](https://github.com/BD2KGenomics/toil-scripts/tree/master/src/toil_scripts/adam_kmers):
   this workflow was demonstrated in [@vivian16] and sets up a Spark cluster
-  which then runs ADAM's `countKmers` CLI.
+  which then runs ADAM's [`countKmers` CLI](#countKmers).
 * [adam-pipeline](https://github.com/BD2KGenomics/toil-scripts/tree/master/src/toil_scripts/adam_pipeline):
-  this workflow runs several stages in the ADAM `transformAlignments` CLI.
+  this workflow runs several stages in the ADAM [`transformAlignments` CLI](#transformAlignments).
   This pipeline is the ADAM equivalent to the GATK's "Best Practice" read
   preprocessing pipeline. We then stitch together this pipeline with
   [BWA-MEM](https://github.com/lh3/bwa) and the GATK in the [adam-gatk-pipeline](
@@ -264,7 +264,7 @@ include:
 
 ### An example workflow: `toil_scripts.adam_kmers.count_kmers`
 
-For an example of how to use ADAM with Toil, let's look at the
+For an example of how to use ADAM with Toil, let us look at the
 [toil_scripts.adam_kmers.count_kmers](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py)
 module. This module has three parts:
 
@@ -279,7 +279,7 @@ module. This module has three parts:
 
 #### Configuring and launching Toil
 
-Toil takes most of it's configuration from the command line. To make this easy,
+Toil takes most of its configuration from the command line. To make this easy,
 Toil includes a function in the `toil.job.Job` class to register Toil's argument
 parsing code with the [Python standard `argparse`](https://docs.python.org/2/library/argparse.html)
 library. E.g., [in `count_kmers.py`](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py#L183-L214),
@@ -344,7 +344,7 @@ call takes the `kmer_dag` function and all of the arguments that are being
 passed and serializes them so they can be run locally or on a remote node.
 Additionally, we pass the optional argument `checkpoint=True`. This argument
 indicates that the `kmer_dag` Job function is a "checkpoint" job. If a job is
-a checkpoint job and any of it's children jobs fail, then we are saying that
+a checkpoint job and any of its children jobs fail, then we are saying that
 the workflow can be successfully rerun from this point. In Toil, service jobs
 should always be launched from a checkpointed job in order to allow the
 service jobs to successfully resume after a service job failure.
@@ -396,7 +396,7 @@ Detailed documentation for the `toil_lib.spark` module can be found in the
 
 #### Running ADAM and other Spark applications
 
-Once we've enqueued the Spark service jobs and the child job that interacts with
+Once we have enqueued the Spark service jobs and the child job that interacts with
 the services, we can launch Spark applications from the child job. In our
 example application, our [child job function](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py#L78-L174)
 does the following work:
@@ -411,10 +411,10 @@ does the following work:
         hdfs_dir = ""
 ```
 
-2. [If it isn't in HDFS, we copy it in using Conductor](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py#L119-L129):
+2. [If it is not in HDFS, we copy it in using Conductor](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py#L119-L129):
 
 ```
-    # if the file isn't already in hdfs, copy it in
+    # if the file is not already in hdfs, copy it in
     hdfs_input_file = hdfs_dir
     if input_file.startswith("s3://"):
 
@@ -427,7 +427,7 @@ does the following work:
                        memory=memory, override_parameters=spark_conf)
 ```
 
-3. [We check to see if the file is a Parquet file, and convert it to Parquet if it isn't](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py#L143-L159):
+3. [We check to see if the file is a Parquet file, and convert it to Parquet if it is not](https://github.com/BD2KGenomics/toil-scripts/blob/master/src/toil_scripts/adam_kmers/count_kmers.py#L143-L159):
 
 ```
     # do we need to convert to adam?
@@ -593,5 +593,5 @@ you may need to ask your local sys admin to open the requried ports.
 
 ### Feedback
 
-We'd love to hear feedback on your experience running ADAM on HPC/Slurm or other deployment architectures. 
+We would love to hear feedback on your experience running ADAM on HPC/Slurm or other deployment architectures. 
 Please let us know of any problems you run into via the mailing list or Gitter.
