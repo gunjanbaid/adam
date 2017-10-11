@@ -174,7 +174,7 @@ class ADAMContextSuite extends ADAMFunSuite {
     val path = testFile("small.vcf")
 
     val gts = sc.loadGenotypes(path)
-    val vcRdd = gts.toVariantContextRDD
+    val vcRdd = gts.toVariantContexts
     val vcs = vcRdd.rdd.collect.sortBy(_.position)
     assert(vcs.size === 6)
 
@@ -439,28 +439,38 @@ class ADAMContextSuite extends ADAMFunSuite {
   sparkTest("load vcf with a glob") {
     val path = testFile("bqsr1.vcf").replace("bqsr1", "*")
 
-    val variants = sc.loadVcf(path).toVariantRDD
-    assert(variants.rdd.count === 753)
+    val variants = sc.loadVcf(path).toVariants
+    assert(variants.rdd.count === 776)
   }
 
   sparkTest("load vcf from a directory") {
     val path = new File(testFile("vcf_dir/1.vcf")).getParent()
 
-    val variants = sc.loadVcf(path).toVariantRDD
+    val variants = sc.loadVcf(path).toVariants
     assert(variants.rdd.count === 681)
   }
 
   sparkTest("load gvcf which contains a multi-allelic row from a directory") {
     val path = new File(testFile("gvcf_dir/gvcf_multiallelic.g.vcf")).getParent()
 
-    val variants = sc.loadVcf(path).toVariantRDD
-    assert(variants.rdd.count === 6)
+    val variants = sc.loadVcf(path).toVariants
+    assert(variants.rdd.count === 12)
+  }
+
+  sparkTest("load and save gvcf which contains rows without likelihoods") {
+    val vcs = sc.loadVcf(testFile("gvcf_dir/gvcf_multiallelic_noPLs.g.vcf"))
+    assert(vcs.toVariants.rdd.count === 6)
+
+    // can't validate output due to multiallelic sorting issue,
+    // but we can validate that saving doesn't throw an exception, which is
+    // important for #1673
+    vcs.saveAsVcf(tmpLocation(".vcf"), false, false, false, ValidationStringency.STRICT)
   }
 
   sparkTest("parse annotations for multi-allelic rows") {
-    val path = new File(testFile("gvcf_dir/gvcf_multiallelic.g.vcf")).getParent()
+    val path = testFile("gvcf_dir/gvcf_multiallelic.g.vcf")
 
-    val variants = sc.loadVcf(path).toVariantRDD
+    val variants = sc.loadVcf(path).toVariants
     val multiAllelicVariants = variants.rdd
       .filter(_.getReferenceAllele == "TAAA")
       .sortBy(_.getAlternateAllele.length)

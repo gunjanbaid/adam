@@ -577,7 +577,7 @@ case class ReferenceRegion(
    *   moved.
    */
   def pad(byStart: Long, byEnd: Long): ReferenceRegion = {
-    new ReferenceRegion(referenceName, start - byStart, end + byEnd, strand)
+    new ReferenceRegion(referenceName, max(0, start - byStart), end + byEnd, strand)
   }
 
   /**
@@ -698,15 +698,10 @@ case class ReferenceRegion(
         start,
         other.start,
         newRegionStrand))
-    } else if (end > other.end) {
-      Iterable(ReferenceRegion(referenceName,
-        start,
-        other.end,
-        newRegionStrand))
     } else {
       Iterable.empty[ReferenceRegion]
     }
-    val second = if (other.start > start && end > other.end) {
+    val second = if (end > other.end) {
       Iterable(ReferenceRegion(referenceName,
         other.end,
         end,

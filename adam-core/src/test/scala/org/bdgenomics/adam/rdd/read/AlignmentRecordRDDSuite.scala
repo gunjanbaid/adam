@@ -957,10 +957,8 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
       .transform(_.repartition(1))
 
     val jRdd = reads.shuffleRegionJoin(targets)
-    val jRdd0 = reads.shuffleRegionJoin(targets, optPartitions = Some(4))
+    val jRdd0 = reads.shuffleRegionJoin(targets, optPartitions = Some(4), 0L)
 
-    // we can't guarantee that we get exactly the number of partitions requested,
-    // we get close though
     assert(jRdd.rdd.partitions.length === 1)
     assert(jRdd0.rdd.partitions.length === 4)
 
@@ -976,6 +974,26 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
     assert(sc.loadAlignments(tempPath).rdd.count === 5)
   }
 
+  sparkTest("use shuffle join with flankSize to pull down reads mapped close to targets") {
+    val readsPath = testFile("small.1.sam")
+    val targetsPath = testFile("small.1.bed")
+
+    val reads = sc.loadAlignments(readsPath)
+      .transform(_.repartition(1))
+
+    val targets = sc.loadFeatures(targetsPath)
+      .transform(_.repartition(1))
+
+    val jRdd = reads.shuffleRegionJoin(targets, flankSize = 20000000L)
+    val jRdd0 = reads.shuffleRegionJoin(targets, optPartitions = Some(4), flankSize = 20000000L)
+
+    assert(jRdd.rdd.partitions.length === 1)
+    assert(jRdd0.rdd.partitions.length === 4)
+
+    assert(jRdd.rdd.count === 17)
+    assert(jRdd0.rdd.count === 17)
+  }
+
   sparkTest("use right outer shuffle join to pull down reads mapped to targets") {
     val readsPath = testFile("small.1.sam")
     val targetsPath = testFile("small.1.bed")
@@ -986,7 +1004,7 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
       .transform(_.repartition(1))
 
     val jRdd = reads.rightOuterShuffleRegionJoin(targets)
-    val jRdd0 = reads.rightOuterShuffleRegionJoin(targets, optPartitions = Some(4))
+    val jRdd0 = reads.rightOuterShuffleRegionJoin(targets, optPartitions = Some(4), 0L)
 
     // we can't guarantee that we get exactly the number of partitions requested,
     // we get close though
@@ -1011,7 +1029,7 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
       .transform(_.repartition(1))
 
     val jRdd = reads.leftOuterShuffleRegionJoin(targets)
-    val jRdd0 = reads.leftOuterShuffleRegionJoin(targets, optPartitions = Some(4))
+    val jRdd0 = reads.leftOuterShuffleRegionJoin(targets, optPartitions = Some(4), 0L)
 
     // we can't guarantee that we get exactly the number of partitions requested,
     // we get close though
@@ -1036,7 +1054,7 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
       .transform(_.repartition(1))
 
     val jRdd = reads.fullOuterShuffleRegionJoin(targets)
-    val jRdd0 = reads.fullOuterShuffleRegionJoin(targets, optPartitions = Some(4))
+    val jRdd0 = reads.fullOuterShuffleRegionJoin(targets, optPartitions = Some(4), 0L)
 
     // we can't guarantee that we get exactly the number of partitions requested,
     // we get close though
@@ -1065,7 +1083,7 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
       .transform(_.repartition(1))
 
     val jRdd = reads.shuffleRegionJoinAndGroupByLeft(targets)
-    val jRdd0 = reads.shuffleRegionJoinAndGroupByLeft(targets, optPartitions = Some(4))
+    val jRdd0 = reads.shuffleRegionJoinAndGroupByLeft(targets, optPartitions = Some(4), 0L)
 
     // we can't guarantee that we get exactly the number of partitions requested,
     // we get close though
@@ -1090,7 +1108,7 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
       .transform(_.repartition(1))
 
     val jRdd = reads.rightOuterShuffleRegionJoinAndGroupByLeft(targets)
-    val jRdd0 = reads.rightOuterShuffleRegionJoinAndGroupByLeft(targets, optPartitions = Some(4))
+    val jRdd0 = reads.rightOuterShuffleRegionJoinAndGroupByLeft(targets, optPartitions = Some(4), 0L)
 
     // we can't guarantee that we get exactly the number of partitions requested,
     // we get close though
@@ -1379,5 +1397,66 @@ class AlignmentRecordRDDSuite extends ADAMFunSuite {
     assert(htsjdkPg.getProgramName === "myProgram")
     assert(htsjdkPg.getProgramVersion === "1")
     assert(htsjdkPg.getPreviousProgramGroupId === "ppg")
+  }
+
+  sparkTest("GenomicRDD.sort does not fail on unmapped reads") {
+    val inputPath = testFile("unmapped.sam")
+    val reads: AlignmentRecordRDD = sc.loadAlignments(inputPath)
+    assert(reads.rdd.count === 200)
+
+    val sorted = reads.sort(stringency = ValidationStringency.SILENT)
+    assert(sorted.rdd.count === 102)
+  }
+
+  sparkTest("GenomicRDD.sortLexicographically does not fail on unmapped reads") {
+    val inputPath = testFile("unmapped.sam")
+    val reads: AlignmentRecordRDD = sc.loadAlignments(inputPath)
+    assert(reads.rdd.count === 200)
+
+    val sorted = reads.sortLexicographically(
+      stringency = ValidationStringency.SILENT)
+    assert(sorted.rdd.count === 102)
+  }
+
+  sparkTest("left normalize indels") {
+    val reads = Seq(
+      AlignmentRecord.newBuilder()
+        .setReadMapped(false)
+        .build(),
+      AlignmentRecord.newBuilder()
+        .setReadMapped(true)
+        .setSequence("AAAAACCCCCGGGGGTTTTT")
+        .setStart(0)
+        .setCigar("10M2D10M")
+        .setMismatchingPositions("10^CC10")
+        .build(),
+      AlignmentRecord.newBuilder()
+        .setReadMapped(true)
+        .setSequence("AAAAACCCCCGGGGGTTTTT")
+        .setStart(0)
+        .setCigar("10M10D10M")
+        .setMismatchingPositions("10^ATATATATAT10")
+        .build(),
+      AlignmentRecord.newBuilder()
+        .setSequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        .setReadMapped(true)
+        .setCigar("29M10D31M")
+        .setStart(5)
+        .setMismatchingPositions("29^GGGGGGGGGG10G0G0G0G0G0G0G0G0G0G11")
+        .build())
+
+    // obviously, this isn't unaligned, but, we don't use the metadata here
+    val rdd = AlignmentRecordRDD.unaligned(sc.parallelize(reads))
+      .leftNormalizeIndels()
+
+    val normalized = rdd.rdd.collect
+
+    assert(normalized.size === 4)
+    val cigars = normalized.flatMap(r => {
+      Option(r.getCigar)
+    }).toSet
+    assert(cigars("5M2D15M"))
+    assert(cigars("10M10D10M"))
+    assert(cigars("29M10D31M"))
   }
 }

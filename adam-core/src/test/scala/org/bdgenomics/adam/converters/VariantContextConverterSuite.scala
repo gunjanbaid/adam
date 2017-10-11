@@ -306,7 +306,10 @@ class VariantContextConverterSuite extends ADAMFunSuite {
 
     val optHtsjdkVC = converter.convert(ADAMVariantContext(variant, Seq(genotype)))
 
-    assert(optHtsjdkVC.isEmpty)
+    assert(optHtsjdkVC.isDefined)
+    optHtsjdkVC.foreach(vc => {
+      assert(!vc.getGenotype("NA12878").hasAnyAttribute("SB"))
+    })
   }
 
   test("Convert htsjdk multi-allelic sites-only SNVs to ADAM") {
@@ -1479,6 +1482,20 @@ class VariantContextConverterSuite extends ADAMFunSuite {
     val va = buildVariantAnnotation(Map(("AF", acList)),
       converter.formatAlleleFrequency)
     assert(va.getAlleleFrequency > 0.09f && va.getAlleleFrequency < 0.11f)
+  }
+
+  test("single allele frequency is +Inf going htsjdk->adam") {
+    val acList: java.util.List[String] = List("+Inf")
+    val va = buildVariantAnnotation(Map(("AF", acList)),
+      converter.formatAlleleFrequency)
+    assert(va.getAlleleFrequency == Float.PositiveInfinity)
+  }
+
+  test("single allele frequency is -Inf going htsjdk->adam") {
+    val acList: java.util.List[String] = List("-Inf")
+    val va = buildVariantAnnotation(Map(("AF", acList)),
+      converter.formatAlleleFrequency)
+    assert(va.getAlleleFrequency == Float.NegativeInfinity)
   }
 
   test("multiple allele frequencies going htsjdk->adam") {

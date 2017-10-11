@@ -42,6 +42,7 @@ import org.bdgenomics.utils.interval.array.{
 import scala.collection.JavaConversions._
 import scala.math.max
 import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
 
 private[adam] case class NucleotideContigFragmentArray(
     array: Array[(ReferenceRegion, NucleotideContigFragment)],
@@ -185,6 +186,8 @@ case class RDDBoundNucleotideContigFragmentRDD private[rdd] (
 }
 
 sealed abstract class NucleotideContigFragmentRDD extends AvroGenomicRDD[NucleotideContigFragment, NucleotideContigFragmentProduct, NucleotideContigFragmentRDD] {
+
+  @transient val uTag: TypeTag[NucleotideContigFragmentProduct] = typeTag[NucleotideContigFragmentProduct]
 
   protected def buildTree(rdd: RDD[(ReferenceRegion, NucleotideContigFragment)])(
     implicit tTag: ClassTag[NucleotideContigFragment]): IntervalArray[ReferenceRegion, NucleotideContigFragment] = {
@@ -389,6 +392,43 @@ sealed abstract class NucleotideContigFragmentRDD extends AvroGenomicRDD[Nucleot
       case (uoe: UnsupportedOperationException) =>
         throw new UnsupportedOperationException("Could not find " + region + "in reference RDD.")
     }
+  }
+
+  /**
+   * From a set of contigs, returns a list of sequences based on reference regions provided
+   * @param regions List of Reference regions over which to get sequences
+   * @return RDD[(ReferenceRegion, String)] of region -> sequence pairs.
+   */
+  def extractRegions(regions: Iterable[ReferenceRegion]): RDD[(ReferenceRegion, String)] = {
+
+    def extractSequence(fragmentRegion: ReferenceRegion, fragment: NucleotideContigFragment, region: ReferenceRegion): (ReferenceRegion, String) = {
+      val merged = fragmentRegion.intersection(region)
+      val start = (merged.start - fragmentRegion.start).toInt
+      val end = (merged.end - fragmentRegion.start).toInt
+      val fragmentSequence: String = fragment.getSequence
+      (merged, fragmentSequence.substring(start, end))
+    }
+
+    def reduceRegionSequences(
+      kv1: (ReferenceRegion, String),
+      kv2: (ReferenceRegion, String)): (ReferenceRegion, String) = {
+      (kv1._1.merge(kv2._1), if (kv1._1.compareTo(kv2._1) <= 0) {
+        kv1._2 + kv2._2
+      } else {
+        kv2._2 + kv1._2
+      })
+    }
+
+    val places = flattenRddByRegions()
+      .flatMap {
+        case (fragmentRegion, fragment) =>
+          regions.collect {
+            case region if fragmentRegion.overlaps(region) =>
+              (region, extractSequence(fragmentRegion, fragment, region))
+          }
+      }.sortByKey()
+
+    places.reduceByKey(reduceRegionSequences).values
   }
 
   /**

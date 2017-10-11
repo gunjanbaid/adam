@@ -219,11 +219,109 @@ setMethod("toDF",
               new("SparkDataFrame", sdf, FALSE)
           })
 
+setMethod("wrapTransformation",
+          signature(ardd = "GenomicRDD",
+                    tFn = "function"),
+          function(ardd, tFn) {
+              df = toDF(ardd)
+              newDf = tFn(df)
+
+              # should be <init> for ctr
+              sparkR.callJStatic("org.bdgenomics.adam.api.python.DataFrameConversionWrapper",
+                                 "<init>",
+                                 newDf@sdf)
+          })
+
+#' Applies a function that transforms the underlying DataFrame into a new DataFrame
+#' using the Spark SQL API.
+#'
+#' @param tFn A function that transforms the underlying RDD as a DataFrame.
+#' @return A new RDD where the RDD of genomic data has been replaced, but the
+#'    metadata (sequence dictionary, and etc) is copied without modification.
+#'
+#' @export
+setMethod("transform",
+          signature(ardd = "GenomicRDD",
+                    tFn = "function"),
+          function(ardd, tFn) {
+              dfFn = wrapTransformation(ardd, tFn)
+              
+              replaceRdd(ardd,
+                         sparkR.callJMethod(ardd@jrdd, "transformDataFrame", dfFn))
+          })
+
+setMethod("inferConversionFn",
+          signature(ardd = "GenomicRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              stop("This class does not implement conversion function inference.")
+          })
+
+setMethod("destClassSuffix",
+          signature(destClass = "character"),
+          function(destClass) {
+              if (destClass == "NucleotideContigFragmentRDD") {
+                  "ContigsDatasetConverter"
+              } else if (destClass == "CoverageRDD") {
+                  "CoverageDatasetConverter"
+              } else if (destClass == "FeatureRDD") {
+                  "FeaturesDatasetConverter"
+              } else if (destClass == "FragmentRDD") {
+                  "FragmentDatasetConverter"
+              } else if (destClass == "AlignmentRecordRDD") {
+                  "AlignmentRecordDatasetConverter"
+              } else if (destClass == "GenotypeRDD") {
+                  "GenotypeDatasetConverter"
+              } else if (destClass == "VariantRDD") {
+                  "VariantDatasetConverter"
+              } else {
+                  stop(paste("No conversion method known for",
+                             destClass))
+              }
+          })
+
+#' Applies a function that transmutes the underlying DataFrame into a new RDD of a
+#' different type.
+#'
+#' @param tFn A function that transforms the underlying RDD as a DataFrame.
+#' @param convFn The name of the ADAM GenomicDatasetConversion class to use.
+#' @param destClass The destination class of this transmutation.
+#' @return A new RDD where the RDD of genomic data has been replaced, but the
+#'   metadata (sequence dictionary, and etc) is copied without modification.
+#'
+#' @export
+setMethod("transmute",
+          signature(ardd = "GenomicRDD",
+                    tFn = "function",
+                    destClass = "character"),
+          function(ardd, tFn, destClass, convFn = NA) {
+              dfFn = wrapTransformation(ardd, tFn)
+
+              # if no conversion function is provided, try to infer
+              if (is.na(convFn)) {
+                  convFn = inferConversionFn(ardd, destClass)
+              }
+
+              # create an instance of the conversion
+              convFnInst = sparkR.callJStatic(convFn, "<init>")
+              
+              new(destClass,
+                  jrdd = sparkR.callJMethod(ardd@jrdd, "transmuteDataFrame", dfFn, convFnInst))
+          })
+
 setMethod("replaceRdd",
           signature(ardd = "AlignmentRecordRDD",
                     rdd = "jobj"),
           function(ardd, rdd) {
               AlignmentRecordRDD(rdd)
+          })
+
+setMethod("inferConversionFn",
+          signature(ardd = "AlignmentRecordRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.AlignmentRecordsTo",
+                     destClassSuffix(destClass))
           })
 
 #' Convert this set of reads into fragments.
@@ -446,6 +544,14 @@ setMethod("replaceRdd",
               CoverageRDD(rdd)
           })
 
+setMethod("inferConversionFn",
+          signature(ardd = "CoverageRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.CoverageTo",
+                     destClassSuffix(destClass))
+          })
+
 #' Saves coverage as a feature file.
 #'
 #' @param filePath The location to write the output.
@@ -468,7 +574,7 @@ setMethod("save",
 #' @return An RDD with merged tuples of adjacent sites with same coverage.
 #'
 #' @export
-setMethod("save", signature(ardd = "CoverageRDD"),
+setMethod("collapse", signature(ardd = "CoverageRDD"),
           function(ardd) {
               CoverageRDD(sparkR.callJMethod(ardd@jrdd, "collapse"))
           })
@@ -478,9 +584,9 @@ setMethod("save", signature(ardd = "CoverageRDD"),
 #' @return Returns a FeatureRDD from a CoverageRDD.
 #'
 #' @export
-setMethod("toFeatureRDD", signature(ardd = "CoverageRDD"),
+setMethod("toFeatures", signature(ardd = "CoverageRDD"),
           function(ardd) {
-              FeatureRDD(sparkR.callJMethod(ardd@jrdd, "toFeatureRDD"))
+              FeatureRDD(sparkR.callJMethod(ardd@jrdd, "toFeatures"))
           })
 
 #' Gets coverage overlapping specified ReferenceRegion.
@@ -525,6 +631,14 @@ setMethod("flatten", signature(ardd = "CoverageRDD"),
               CoverageRDD(sparkR.callJMethod(ardd@jrdd, "flatten"))
           })
 
+setMethod("inferConversionFn",
+          signature(ardd = "FeatureRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.FeaturesTo",
+                     destClassSuffix(destClass))
+          })
+
 setMethod("replaceRdd",
           signature(ardd = "FeatureRDD",
                     rdd = "jobj"),
@@ -561,6 +675,14 @@ setMethod("save",
 setMethod("toCoverage", signature(ardd = "FeatureRDD"),
           function(ardd) {
               CoverageRDD(sparkR.callJMethod(ardd@jrdd, "toCoverage"))
+          })
+
+setMethod("inferConversionFn",
+          signature(ardd = "FragmentRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.FragmentsTo",
+                     destClassSuffix(destClass))
           })
 
 setMethod("replaceRdd",
@@ -601,6 +723,14 @@ setMethod("save", signature(ardd = "FragmentRDD", filePath = "character"),
               invisible(sparkR.callJMethod(ardd@jrdd, "save", filePath))
           })
 
+setMethod("inferConversionFn",
+          signature(ardd = "GenotypeRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.GenotypesTo",
+                     destClassSuffix(destClass))
+          })
+
 setMethod("replaceRdd",
           signature(ardd = "GenotypeRDD",
                     rdd = "jobj"),
@@ -618,12 +748,22 @@ setMethod("saveAsParquet", signature(ardd = "GenotypeRDD", filePath = "character
               invisible(sparkR.callJMethod(ardd@jrdd, "saveAsParquet", filePath))
           })
 
+#' Converts this RDD of Genotypes to VariantContexts.
+#'
 #' @return Returns this RDD of Genotypes as VariantContexts.
 #'
 #' @export
-setMethod("toVariantContextRDD", signature(ardd = "GenotypeRDD"),
+setMethod("toVariantContexts", signature(ardd = "GenotypeRDD"),
           function(ardd) {
-              VariantContextRDD(sparkR.callJMethod(ardd@jrdd, "toVariantContextRDD"))
+              VariantContextRDD(sparkR.callJMethod(ardd@jrdd, "toVariantContexts"))
+          })
+
+setMethod("inferConversionFn",
+          signature(ardd = "NucleotideContigFragmentRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.ContigsTo",
+                     destClassSuffix(destClass))
           })
 
 setMethod("replaceRdd",
@@ -662,6 +802,14 @@ setMethod("flankAdjacentFragments",
                                                              flankLength))
           })
 
+setMethod("inferConversionFn",
+          signature(ardd = "VariantRDD",
+                    destClass = "character"),
+          function(ardd, destClass) {
+              paste0("org.bdgenomics.adam.api.java.VariantsTo",
+                     destClassSuffix(destClass))
+          })
+
 setMethod("replaceRdd",
           signature(ardd = "VariantRDD",
                     rdd = "jobj"),
@@ -679,12 +827,14 @@ setMethod("saveAsParquet", signature(ardd = "VariantRDD", filePath = "character"
               invisible(sparkR.callJMethod(ardd@jrdd, "saveAsParquet", filePath))
           })
 
+#' Converts this RDD of Variants to VariantContexts.
+#'
 #' @return Returns this RDD of Variants as VariantContexts.
 #'
 #' @export
-setMethod("toVariantContextRDD", signature(ardd = "VariantRDD"),
+setMethod("toVariantContexts", signature(ardd = "VariantRDD"),
           function(ardd) {
-              VariantContextRDD(sparkR.callJMethod(ardd@jrdd, "toVariantContextRDD"))
+              VariantContextRDD(sparkR.callJMethod(ardd@jrdd, "toVariantContexts"))
           })
 
 setMethod("replaceRdd",

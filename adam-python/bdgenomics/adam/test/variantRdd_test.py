@@ -32,9 +32,21 @@ class VariantRDDTest(SparkTestCase):
         variants = ac.loadVariants(testFile)
 
         tmpPath = self.tmpFile() + ".vcf"
-        variants.toVariantContextRDD().saveAsVcf(tmpPath)
+        variants.toVariantContexts().saveAsVcf(tmpPath)
 
         savedVariants = ac.loadVariants(testFile)
 
         self.assertEquals(variants._jvmRdd.jrdd().count(),
                           savedVariants._jvmRdd.jrdd().count())
+
+
+    def test_transform(self):
+
+        variantPath = self.resourceFile("small.vcf")
+        ac = ADAMContext(self.sc)
+
+        variants = ac.loadVariants(variantPath)
+
+        transformedVariants = variants.transform(lambda x: x.filter(x.start < 19190))
+
+        self.assertEquals(transformedVariants.toDF().count(), 3)

@@ -2739,7 +2739,7 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
 
     if (isVcfExt(pathName)) {
       log.info(s"Loading $pathName as VCF and converting to Genotypes.")
-      loadVcf(pathName, stringency).toGenotypeRDD
+      loadVcf(pathName, stringency).toGenotypes
     } else {
       log.info(s"Loading $pathName as Parquet containing Genotypes. Sequence dictionary for translation is ignored.")
       loadParquetGenotypes(pathName, optPredicate = optPredicate, optProjection = optProjection)
@@ -2773,7 +2773,7 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
 
     if (isVcfExt(pathName)) {
       log.info(s"Loading $pathName as VCF and converting to Variants.")
-      loadVcf(pathName, stringency).toVariantRDD
+      loadVcf(pathName, stringency).toVariants
     } else {
       log.info(s"Loading $pathName as Parquet containing Variants. Sequence dictionary for translation is ignored.")
       loadParquetVariants(pathName, optPredicate = optPredicate, optProjection = optProjection)
@@ -2874,12 +2874,15 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
    *   Defaults to None.
    * @param optProjection An option projection schema to use when reading Parquet + Avro.
    *   Defaults to None.
+   * @param stringency The validation stringency to use when validating BAM/CRAM/SAM or FASTQ formats.
+   *   Defaults to ValidationStringency.STRICT.
    * @return Returns a FragmentRDD.
    */
   def loadFragments(
     pathName: String,
     optPredicate: Option[FilterPredicate] = None,
-    optProjection: Option[Schema] = None): FragmentRDD = LoadFragments.time {
+    optProjection: Option[Schema] = None,
+    stringency: ValidationStringency = ValidationStringency.STRICT): FragmentRDD = LoadFragments.time {
 
     // need this to pick up possible .bgz extension
     sc.hadoopConfiguration.setStrings("io.compression.codecs",
@@ -2890,11 +2893,11 @@ class ADAMContext(@transient val sc: SparkContext) extends Serializable with Log
       // check to see if the input files are all queryname sorted
       if (filesAreQueryGrouped(pathName)) {
         log.info(s"Loading $pathName as queryname sorted BAM/CRAM/SAM and converting to Fragments.")
-        loadBam(pathName).transform(RepairPartitions(_))
+        loadBam(pathName, stringency).transform(RepairPartitions(_))
           .querynameSortedToFragments
       } else {
         log.info(s"Loading $pathName as BAM/CRAM/SAM and converting to Fragments.")
-        loadBam(pathName).toFragments
+        loadBam(pathName, stringency).toFragments
       }
     } else if (isInterleavedFastqExt(trimmedPathName)) {
       log.info(s"Loading $pathName as interleaved FASTQ and converting to Fragments.")
