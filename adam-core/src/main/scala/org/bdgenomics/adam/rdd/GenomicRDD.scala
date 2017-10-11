@@ -464,7 +464,10 @@ trait GenomicRDD[T, U <: GenomicRDD[T, U]] extends Logging {
   def pipe[X, Y <: GenomicRDD[X, Y], V <: InFormatter[T, U, V]](cmd: String,
                                                                 files: Seq[String] = Seq.empty,
                                                                 environment: Map[String, String] = Map.empty,
-                                                                flankSize: Int = 0)(implicit tFormatterCompanion: InFormatterCompanion[T, U, V],
+                                                                flankSize: Int = 0,
+                                                                repartitionInput: Boolean = true,
+                                                                filterOutput: Boolean = false)
+                                                                (implicit tFormatterCompanion: InFormatterCompanion[T, U, V],
                                                                                     xFormatter: OutFormatter[X],
                                                                                     convFn: (U, RDD[X]) => Y,
                                                                                     tManifest: ClassTag[T],
@@ -484,6 +487,10 @@ trait GenomicRDD[T, U <: GenomicRDD[T, U]] extends Logging {
     val bins = GenomeBins(totalLength / rdd.partitions.size, seqLengths)
 
     // if the input rdd is mapped, then we need to repartition
+    val partitionedRdd = if (sequences.records.size == 0 || 
+      repartitionInput == false) {
+      rdd
+    } else {
     val partitionedRdd = if (sequences.records.size > 0) {
       // get region covered, expand region by flank size, and tag with bins
       val binKeyedRdd = rdd.flatMap(r => {
@@ -506,8 +513,6 @@ trait GenomicRDD[T, U <: GenomicRDD[T, U]] extends Logging {
         .repartitionAndSortWithinPartitions(
           ManualRegionPartitioner(bins.numBins))
         .values
-    } else {
-      rdd
     }
 
     // are we in local mode?
@@ -561,7 +566,8 @@ trait GenomicRDD[T, U <: GenomicRDD[T, U]] extends Logging {
 
     // if the original rdd was aligned and the final rdd is aligned, then we must filter
     if (newRdd.sequences.isEmpty ||
-      sequences.isEmpty) {
+      sequences.isEmpty ||
+      filterOutput == false) {
       newRdd
     } else {
       def filterPartition(idx: Int, iter: Iterator[X]): Iterator[X] = {
